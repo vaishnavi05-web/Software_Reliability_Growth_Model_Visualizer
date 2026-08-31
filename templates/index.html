@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Software Reliability Growth Model Visualizer | SEQA & TAE</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dark-theme">
+    <!-- Header Navbar -->
+    <header class="app-header">
+        <div class="header-container">
+            <div class="logo-group">
+                <i class="fa-solid fa-chart-line logo-icon"></i>
+                <div>
+                    <h1>SRGM Visualizer</h1>
+                    <span class="sub-heading">Software Reliability Growth Models • SEQA & TAE</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="btn-theme-toggle" class="btn btn-icon" title="Toggle Light/Dark Theme">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+                <button id="btn-help-modal" class="btn btn-outline" onclick="switchTab('theory-tab')">
+                    <i class="fa-solid fa-book"></i> SEQA Formulas
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-wrapper">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar-panel">
+            <div class="card panel-card">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-sliders"></i> Data & Fitting Setup</h3>
+                </div>
+                
+                <!-- Preset Sample Selector -->
+                <div class="form-group">
+                    <label for="sample-dataset-select"><i class="fa-solid fa-database"></i> Benchmark Datasets</label>
+                    <select id="sample-dataset-select" class="form-control">
+                        <option value="">-- Custom Input / Upload --</option>
+                    </select>
+                </div>
+
+                <!-- Input Format & Options -->
+                <div class="form-group">
+                    <label><i class="fa-solid fa-list-ol"></i> Failure Metric Type</label>
+                    <div class="toggle-group">
+                        <label class="toggle-btn active">
+                            <input type="radio" name="input_type" value="cumulative" checked> Cumulative m(t)
+                        </label>
+                        <label class="toggle-btn">
+                            <input type="radio" name="input_type" value="intervals"> Time Between Failures
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Raw Data Textarea Input -->
+                <div class="form-group">
+                    <div class="label-row">
+                        <label for="data-input-text"><i class="fa-solid fa-table-cells"></i> Input Failure Data</label>
+                        <span class="info-tooltip" title="Format: Time, Cumulative Failures per line (or Time Between Failures)">?</span>
+                    </div>
+                    <textarea id="data-input-text" class="form-control code-font" rows="7" placeholder="Time, Failures&#10;10, 7&#10;25, 18&#10;45, 29&#10;70, 42&#10;100, 58"></textarea>
+                </div>
+
+                <!-- File Upload Box -->
+                <div class="form-group">
+                    <label for="file-upload" class="file-drop-area">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span id="file-drop-label">Upload CSV / TXT Data File</span>
+                        <input type="file" id="file-upload" accept=".csv, .txt, .json">
+                    </label>
+                </div>
+
+                <!-- Target Reliability Parameters -->
+                <div class="form-group row-2-col">
+                    <div>
+                        <label for="forecast-horizon">Forecast Horizon (Δt)</label>
+                        <input type="number" id="forecast-horizon" class="form-control" value="50" min="5" max="1000">
+                    </div>
+                    <div>
+                        <label for="target-intensity">Target λ(t) Rate</label>
+                        <input type="number" id="target-intensity" class="form-control" value="0.01" step="0.005" min="0.0001">
+                    </div>
+                </div>
+
+                <!-- Model Selection Checkboxes -->
+                <div class="form-group">
+                    <label><i class="fa-solid fa-chart-diagram"></i> Models to Fit</label>
+                    <div class="checkbox-list">
+                        <label><input type="checkbox" name="model_select" value="goel_okumoto" checked> Goel-Okumoto (GO)</label>
+                        <label><input type="checkbox" name="model_select" value="jelinski_moranda" checked> Jelinski-Moranda (JM)</label>
+                        <label><input type="checkbox" name="model_select" value="musa_okumoto" checked> Musa-Okumoto Logarithmic</label>
+                        <label><input type="checkbox" name="model_select" value="yamada_sshaped" checked> Yamada S-Shaped</label>
+                    </div>
+                </div>
+
+                <!-- Primary Action Buttons -->
+                <div class="button-group">
+                    <button id="btn-fit-models" class="btn btn-primary btn-block">
+                        <i class="fa-solid fa-bolt"></i> Fit & Visualize
+                    </button>
+                    <button id="btn-reset-data" class="btn btn-secondary">
+                        <i class="fa-solid fa-rotate-left"></i> Reset
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace Dashboard -->
+        <section class="content-panel">
+            <!-- Top Summary Cards -->
+            <div class="summary-cards-grid">
+                <div class="metric-card glass-card">
+                    <div class="card-icon blue-glow"><i class="fa-solid fa-trophy"></i></div>
+                    <div class="metric-info">
+                        <span class="metric-label">Best Fitting Model</span>
+                        <h4 id="metric-best-model">--</h4>
+                        <span class="metric-sub" id="metric-best-r2">R² Score: --</span>
+                    </div>
+                </div>
+
+                <div class="metric-card glass-card">
+                    <div class="card-icon green-glow"><i class="fa-solid fa-bug"></i></div>
+                    <div class="metric-info">
+                        <span class="metric-label">Total Observed Failures</span>
+                        <h4 id="metric-total-failures">0</h4>
+                        <span class="metric-sub" id="metric-max-time">Testing Time: 0</span>
+                    </div>
+                </div>
+
+                <div class="metric-card glass-card">
+                    <div class="card-icon orange-glow"><i class="fa-solid fa-calculator"></i></div>
+                    <div class="metric-info">
+                        <span class="metric-label">Estimated Remaining Faults</span>
+                        <h4 id="metric-remaining-faults">--</h4>
+                        <span class="metric-sub">Based on best fit a - m(t)</span>
+                    </div>
+                </div>
+
+                <div class="metric-card glass-card">
+                    <div class="card-icon purple-glow"><i class="fa-solid fa-clock"></i></div>
+                    <div class="metric-info">
+                        <span class="metric-label">Target Testing Time Needed</span>
+                        <h4 id="metric-target-time">--</h4>
+                        <span class="metric-sub" id="metric-target-sub">To reach λ ≤ 0.01</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Navigation Bar -->
+            <div class="tabs-nav-container">
+                <button class="tab-btn active" onclick="switchTab('cumulative-tab')">
+                    <i class="fa-solid fa-chart-line"></i> Cumulative Failures m(t)
+                </button>
+                <button class="tab-btn" onclick="switchTab('intensity-tab')">
+                    <i class="fa-solid fa-bolt-lightning"></i> Failure Rate λ(t)
+                </button>
+                <button class="tab-btn" onclick="switchTab('residual-tab')">
+                    <i class="fa-solid fa-chart-simple"></i> Residual Errors
+                </button>
+                <button class="tab-btn" onclick="switchTab('comparison-tab')">
+                    <i class="fa-solid fa-table"></i> Parameter & Metrics Comparison
+                </button>
+                <button class="tab-btn" onclick="switchTab('theory-tab')">
+                    <i class="fa-solid fa-graduation-cap"></i> SEQA Theory & Formulas
+                </button>
+            </div>
+
+            <!-- Tab Contents -->
+            <div class="tab-content-container">
+                
+                <!-- 1. Cumulative Failures Tab -->
+                <div id="cumulative-tab" class="tab-pane active">
+                    <div class="card chart-card">
+                        <div class="chart-header">
+                            <div>
+                                <h3>Cumulative Failure Growth Curve m(t)</h3>
+                                <p class="chart-subtitle">Observed failure points vs SRGM fitted equations & future reliability projection.</p>
+                            </div>
+                            <div class="chart-controls">
+                                <button class="btn btn-sm btn-outline" onclick="exportChart('cumulative-chart')">
+                                    <i class="fa-solid fa-download"></i> Save Chart
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="cumulative-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Failure Intensity Tab -->
+                <div id="intensity-tab" class="tab-pane">
+                    <div class="card chart-card">
+                        <div class="chart-header">
+                            <div>
+                                <h3>Failure Intensity Curve λ(t)</h3>
+                                <p class="chart-subtitle">Rate of failure detection over testing time and reliability convergence.</p>
+                            </div>
+                            <div class="chart-controls">
+                                <button class="btn btn-sm btn-outline" onclick="exportChart('intensity-chart')">
+                                    <i class="fa-solid fa-download"></i> Save Chart
+                                </button>
+                            </div>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="intensity-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Residual Errors Tab -->
+                <div id="residual-tab" class="tab-pane">
+                    <div class="card chart-card">
+                        <div class="chart-header">
+                            <div>
+                                <h3>Residual Errors Plot (y_i - y_pred)</h3>
+                                <p class="chart-subtitle">Visualizing modeling bias and variance across test iterations.</p>
+                            </div>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="residual-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Comparison Table Tab -->
+                <div id="comparison-tab" class="tab-pane">
+                    <div class="card table-card">
+                        <div class="card-header">
+                            <h3><i class="fa-solid fa-scale-balanced"></i> SRGM Quantitative Evaluation Matrix</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table" id="comparison-table">
+                                <thead>
+                                    <tr>
+                                        <th>Model Name</th>
+                                        <th>Estimated Parameters</th>
+                                        <th>R² Score</th>
+                                        <th>RMSE</th>
+                                        <th>MSE</th>
+                                        <th>AIC</th>
+                                        <th>Est. Total Defects (a)</th>
+                                        <th>Est. Remaining Defect</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="9" class="text-center">Click <strong>"Fit & Visualize"</strong> to process models.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. SEQA Theory & Formulas Tab -->
+                <div id="theory-tab" class="tab-pane">
+                    <div class="theory-grid">
+                        <div class="card theory-card">
+                            <h3><i class="fa-solid fa-square-root-variable"></i> 1. Goel-Okumoto (GO) Model</h3>
+                            <p>An NHPP-based model assuming equal fault isolation probability per defect.</p>
+                            <div class="formula-box code-font">
+                                <strong>Cumulative Failures:</strong> m(t) = a * (1 - e<sup>-b*t</sup>)<br>
+                                <strong>Failure Intensity:</strong> &lambda;(t) = a * b * e<sup>-b*t</sup>
+                            </div>
+                            <ul>
+                                <li><strong>a</strong> = Expected total number of faults in software.</li>
+                                <li><strong>b</strong> = Fault detection rate parameter per fault.</li>
+                            </ul>
+                        </div>
+
+                        <div class="card theory-card">
+                            <h3><i class="fa-solid fa-square-root-variable"></i> 2. Jelinski-Moranda (JM) Model</h3>
+                            <p>One of the earliest reliability models assuming a constant hazard rate between failures.</p>
+                            <div class="formula-box code-font">
+                                <strong>Cumulative Failures:</strong> m(t) = N * (1 - e<sup>-&phi;*t</sup>)<br>
+                                <strong>Failure Intensity:</strong> &lambda;(t) = N * &phi; * e<sup>-&phi;*t</sup>
+                            </div>
+                            <ul>
+                                <li><strong>N</strong> = Initial fault content of the software product.</li>
+                                <li><strong>&phi;</strong> = Fault exposure / isolation proportionality factor.</li>
+                            </ul>
+                        </div>
+
+                        <div class="card theory-card">
+                            <h3><i class="fa-solid fa-square-root-variable"></i> 3. Musa-Okumoto Logarithmic Model</h3>
+                            <p>An NHPP model with an exponentially decreasing failure intensity per defect repaired.</p>
+                            <div class="formula-box code-font">
+                                <strong>Cumulative Failures:</strong> m(t) = (1 / &theta;) * ln(1 + &lambda;<sub>0</sub> * &theta; * t)<br>
+                                <strong>Failure Intensity:</strong> &lambda;(t) = &lambda;<sub>0</sub> / (1 + &lambda;<sub>0</sub> * &theta; * t)
+                            </div>
+                            <ul>
+                                <li><strong>&lambda;<sub>0</sub></strong> = Initial failure intensity at starting test execution.</li>
+                                <li><strong>&theta;</strong> = Failure intensity decay parameter per defect fixed.</li>
+                            </ul>
+                        </div>
+
+                        <div class="card theory-card">
+                            <h3><i class="fa-solid fa-square-root-variable"></i> 4. Yamada S-Shaped Reliability Model</h3>
+                            <p>Models testing processes where initial defect discovery involves learning curves or setup phase.</p>
+                            <div class="formula-box code-font">
+                                <strong>Cumulative Failures:</strong> m(t) = a * (1 - (1 + b*t) * e<sup>-b*t</sup>)<br>
+                                <strong>Failure Intensity:</strong> &lambda;(t) = a * b<sup>2</sup> * t * e<sup>-b*t</sup>
+                            </div>
+                            <ul>
+                                <li><strong>a</strong> = Expected total number of defects.</li>
+                                <li><strong>b</strong> = Fault isolation rate parameter.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div class="footer-container">
+            <p>Software Reliability Growth Model Visualizer • SEQA / TAE Project</p>
+            <p class="muted">Powered by Flask, SciPy Optimization, and Chart.js</p>
+        </div>
+    </footer>
+
+    <!-- Application Script -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
